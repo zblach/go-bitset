@@ -3,7 +3,7 @@ package mapset
 import (
 	"sync"
 
-	"github.com/zblach/bitset"
+	"github.com/zblach/go-bitset"
 )
 
 type noneT struct{}

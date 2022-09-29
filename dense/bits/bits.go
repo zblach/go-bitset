@@ -6,7 +6,7 @@ import (
 
 	mb "math/bits"
 
-	"github.com/zblach/bitset"
+	"github.com/zblach/go-bitset"
 )
 
 // Width is the underlying word-size for storing bit fields.

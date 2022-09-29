@@ -3,7 +3,7 @@ package bools
 import (
 	"sync"
 
-	"github.com/zblach/bitset"
+	"github.com/zblach/go-bitset"
 )
 
 func (s *Bitset[V]) Iterate() bitset.Iter[V] {

@@ -3,7 +3,7 @@ package bools
 import (
 	"sync"
 
-	"github.com/zblach/bitset"
+	"github.com/zblach/go-bitset"
 )
 
 // Bitset is a boolean-slice-backed bit array. It favors speed over size.

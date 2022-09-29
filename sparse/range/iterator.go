@@ -3,7 +3,7 @@ package rangeset
 import (
 	"sync"
 
-	"github.com/zblach/bitset"
+	"github.com/zblach/go-bitset"
 )
 
 // Iterate implements bitset.Inspect

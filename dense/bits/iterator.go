@@ -4,7 +4,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/zblach/bitset"
+	"github.com/zblach/go-bitset"
 
 	mb "math/bits"
 )

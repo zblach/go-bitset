@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/zblach/bitset"
-	"github.com/zblach/bitset/dense/bits"
-	"github.com/zblach/bitset/dense/bools"
+	"github.com/zblach/go-bitset"
+	"github.com/zblach/go-bitset/dense/bits"
+	"github.com/zblach/go-bitset/dense/bools"
 )
 
 func TestHeterogenousCopy(t *testing.T) {

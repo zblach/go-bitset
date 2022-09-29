@@ -3,7 +3,7 @@ package mapset
 import (
 	"sort"
 
-	"github.com/zblach/bitset"
+	"github.com/zblach/go-bitset"
 )
 
 func (s *Bitset[V]) Iterate() bitset.Iter[V] {
