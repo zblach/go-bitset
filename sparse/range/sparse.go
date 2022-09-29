@@ -16,6 +16,11 @@ type Bitset[V bitset.Value] struct {
 
 // And implements bitset.Logical
 func (a *Bitset[V]) And(b *Bitset[V]) (aAndB *Bitset[V]) {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	b.lock.RLock()
+	defer b.lock.RUnlock()
+
 	aAndB = New[V]()
 
 	it_a, it_b := a.Iterate(), b.Iterate()
@@ -23,10 +28,8 @@ func (a *Bitset[V]) And(b *Bitset[V]) (aAndB *Bitset[V]) {
 	val_a, next_a := it_a.Next()
 	val_b, next_b := it_b.Next()
 
-	for {
+	for next_a && next_b {
 		switch {
-		case !next_a, !next_b:
-			return
 		case val_a == val_b:
 			aAndB.Set(val_a)
 			val_a, next_a = it_a.Next()
@@ -37,10 +40,17 @@ func (a *Bitset[V]) And(b *Bitset[V]) (aAndB *Bitset[V]) {
 			val_b, next_b = it_b.Next()
 		}
 	}
+
+	return
 }
 
 // Or implements bitset.Logical
 func (a *Bitset[V]) Or(b *Bitset[V]) (aOrB *Bitset[V]) {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	b.lock.RLock()
+	defer b.lock.RUnlock()
+
 	var short, long *Bitset[V]
 	if a.pop > b.pop {
 		short, long = b, a
@@ -81,7 +91,7 @@ func (s *Bitset[V]) Pop() uint {
 func New[V bitset.Value]() *Bitset[V] {
 	return &Bitset[V]{
 		lock: &sync.RWMutex{},
-		sets: []sparseRange[V]{},
+		sets: sparseSet[V]{},
 	}
 }
 
@@ -89,7 +99,7 @@ func (s *Bitset[V]) Clear() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.sets = make([]sparseRange[V], 0)
+	s.sets = make(sparseSet[V], 0)
 }
 
 // Get implements bitset.Bitset
@@ -137,6 +147,14 @@ var (
 	_ bitset.Logical[rune, *Bitset[rune]] = (*Bitset[rune])(nil) // TBD
 	_ bitset.Inspect[uint]                = (*Bitset[uint])(nil)
 )
+
+type sparseRange[V constraints.Integer] struct {
+	start, end V // inclusive
+}
+
+func (s *sparseRange[V]) contains(val V) bool {
+	return val >= s.start && val <= s.end
+}
 
 type sparseSet[V constraints.Integer] []sparseRange[V]
 
@@ -218,12 +236,4 @@ func (s *sparseSet[V]) remove(val V) bool {
 		}
 	}
 	return true
-}
-
-type sparseRange[V constraints.Integer] struct {
-	start, end V // inclusive
-}
-
-func (s *sparseRange[V]) contains(val V) bool {
-	return val >= s.start && val <= s.end
 }

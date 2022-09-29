@@ -3,9 +3,8 @@ package bitset
 import "golang.org/x/exp/constraints"
 
 type Value interface {
-	constraints.Integer |
+	constraints.Unsigned |
 		~uint | /* uint8 | */ uint16 | uint32 | uint64 |
-		~int | int8 | int16 | /* int32 | */ int64 |
 
 		~rune | ~byte // a.k.a int32 / uint8 respectively
 

@@ -7,6 +7,9 @@ import (
 )
 
 func (s *Bitset[V]) Iterate() bitset.Iter[V] {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
 	it := &Iterator[V]{
 		Bitset: Bitset[V]{
 			lock: &sync.RWMutex{},
