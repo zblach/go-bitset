@@ -9,11 +9,11 @@ import (
 	mb "math/bits"
 )
 
-func (s *Bitset[W]) Iterate() bitset.Iterator {
+func (s *Bitset[W, V]) Iterate() bitset.Iter[V] {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	it := &Iterator[W]{
+	it := &Iterator[W, V]{
 		lock: &sync.RWMutex{},
 		copy: make([]W, len(s.bits)),
 	}
@@ -22,16 +22,16 @@ func (s *Bitset[W]) Iterate() bitset.Iterator {
 	return it
 }
 
-type Iterator[W Width] struct {
+type Iterator[W Width, V bitset.Value] struct {
 	lock *sync.RWMutex
 
 	copy  []W
 	index uint
 
-	wordBits []uint
+	wordBits []V
 }
 
-func (it *Iterator[W]) Next() (uint, bool) {
+func (it *Iterator[W, V]) Next() (V, bool) {
 	it.lock.Lock()
 	defer it.lock.Unlock()
 
@@ -49,13 +49,14 @@ func (it *Iterator[W]) Next() (uint, bool) {
 			return 0, false
 		}
 
-		it.wordBits = make([]uint, mb.OnesCount64(uint64(window)))
+		// precompute next values in this window
+		it.wordBits = make([]V, mb.OnesCount64(uint64(window)))
 		windowSize := uint(unsafe.Sizeof(W(0))) * 8
 
 		wordIndex := 0
 		for i := uint(0); i < windowSize; i += 1 {
 			if window&(1<<i) != 0 {
-				it.wordBits[wordIndex] = i + (windowSize * it.index)
+				it.wordBits[wordIndex] = V(i + (windowSize * it.index))
 				wordIndex++
 			}
 		}

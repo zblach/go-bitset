@@ -7,11 +7,11 @@ import (
 )
 
 func Test_Bools_Sizes(t *testing.T) {
-	assert.Len(t, New(1).bits, 1)
-	assert.Len(t, New(8).bits, 8)
-	assert.Len(t, New(64).bits, 64)
+	assert.Len(t, New[uint](1).bits, 1)
+	assert.Len(t, New[uint](8).bits, 8)
+	assert.Len(t, New[uint8](64).bits, 64)
 
-	assert.Len(t, New(0).bits, 0)
+	assert.Len(t, New[rune](0).bits, 0)
 }
 
 const (
@@ -20,7 +20,7 @@ const (
 )
 
 func Test_Bools_SetUnset(t *testing.T) {
-	e := New(8)
+	e := New[uint8](8)
 
 	e.Set(0, 3, 7)
 
@@ -46,8 +46,8 @@ func Test_Bools_SetUnset(t *testing.T) {
 }
 
 func Test_Bools_Logical(t *testing.T) {
-	a := New(0)
-	b := New(0)
+	a := New[uint](0)
+	b := New[uint](0)
 
 	a.Set(1, 3, 5, 6, 7).Set()
 	b.Set(0, 2, 4, 6, 7).Unset()
@@ -80,7 +80,7 @@ func Test_Bools_Logical(t *testing.T) {
 }
 
 func Test_Bools_Inspect(t *testing.T) {
-	a := New(2)
+	a := New[uint](2)
 	a.Set(1, 2, 3, 1).Unset(2)
 
 	assert.Equal(t, 4, a.Len())

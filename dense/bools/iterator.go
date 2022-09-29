@@ -6,9 +6,9 @@ import (
 	"github.com/zblach/bitset"
 )
 
-func (s *Bitset) Iterate() bitset.Iterator {
-	it := &Iterator{
-		Bitset: Bitset{
+func (s *Bitset[V]) Iterate() bitset.Iter[V] {
+	it := &Iterator[V]{
+		Bitset: Bitset[V]{
 			lock: &sync.RWMutex{},
 			pop:  s.pop,
 			bits: make([]bool, len(s.bits)),
@@ -20,18 +20,20 @@ func (s *Bitset) Iterate() bitset.Iterator {
 	return it
 }
 
-type Iterator struct {
-	Bitset
+type Iterator[V bitset.Value] struct {
+	Bitset[V]
 	index uint
 }
 
-func (it *Iterator) Next() (uint, bool) {
+func (it *Iterator[V]) Next() (V, bool) {
 	it.lock.Lock()
 	defer it.lock.Unlock()
 
 	for ; it.index < uint(len(it.bits)); it.index++ {
 		if it.bits[it.index] {
-			return it.index, true
+			val := V(it.index)
+			it.index++
+			return val, true
 		}
 	}
 	return 0, false

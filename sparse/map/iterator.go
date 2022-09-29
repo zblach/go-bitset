@@ -6,12 +6,12 @@ import (
 	"github.com/zblach/bitset"
 )
 
-func (s *Bitset) Iterate() bitset.Iterator {
+func (s *Bitset[V]) Iterate() bitset.Iter[V] {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	it := &Iterator{
-		keys: make([]uint, s.pop),
+	it := &Iterator[V]{
+		keys: make([]V, s.pop),
 	}
 
 	i := 0
@@ -27,12 +27,12 @@ func (s *Bitset) Iterate() bitset.Iterator {
 	return it
 }
 
-type Iterator struct {
-	keys  []uint
+type Iterator[V bitset.Value] struct {
+	keys  []V
 	index uint
 }
 
-func (it *Iterator) Next() (uint, bool) {
+func (it *Iterator[V]) Next() (V, bool) {
 	if it.index >= uint(len(it.keys)) {
 		return 0, false
 	}
@@ -41,4 +41,4 @@ func (it *Iterator) Next() (uint, bool) {
 	return val, true
 }
 
-var _ bitset.Iterator = (*Iterator)(nil)
+var _ bitset.Iter[uint16] = (*Iterator[uint16])(nil)

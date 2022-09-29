@@ -10,30 +10,30 @@ type noneT struct{}
 
 var none = noneT{}
 
-type Bitset struct {
+type Bitset[V bitset.Value] struct {
 	lock *sync.RWMutex
 
-	values map[uint]noneT
+	values map[V]noneT
 	pop    uint
 }
 
-func New() *Bitset {
-	return &Bitset{
+func New[V bitset.Value]() *Bitset[V] {
+	return &Bitset[V]{
 		lock:   &sync.RWMutex{},
-		values: map[uint]noneT{},
+		values: map[V]noneT{},
 	}
 }
 
-func (s *Bitset) Clear() {
+func (s *Bitset[V]) Clear() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.values = map[uint]noneT{}
+	s.values = map[V]noneT{}
 	s.pop = 0
 }
 
 // Get implements bitset.Bitset
-func (s *Bitset) Get(index uint) bool {
+func (s *Bitset[V]) Get(index V) bool {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
@@ -42,7 +42,7 @@ func (s *Bitset) Get(index uint) bool {
 }
 
 // Set implements bitset.Bitset
-func (s *Bitset) Set(indices ...uint) bitset.Bitset {
+func (s *Bitset[V]) Set(indices ...V) bitset.Bitset[V] {
 	if len(indices) == 0 {
 		return s
 	}
@@ -61,7 +61,7 @@ func (s *Bitset) Set(indices ...uint) bitset.Bitset {
 }
 
 // Unset implements bitset.Bitset
-func (s *Bitset) Unset(indices ...uint) bitset.Bitset {
+func (s *Bitset[V]) Unset(indices ...V) bitset.Bitset[V] {
 	if len(indices) == 0 {
 		return s
 	}
@@ -80,20 +80,20 @@ func (s *Bitset) Unset(indices ...uint) bitset.Bitset {
 }
 
 // And implements bitset.Logical
-func (a *Bitset) And(b *Bitset) (aAndB *Bitset) {
+func (a *Bitset[V]) And(b *Bitset[V]) (aAndB *Bitset[V]) {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
-	var short, long *Bitset
+	var short, long *Bitset[V]
 	if a.pop > b.pop {
 		short, long = b, a
 	} else {
 		short, long = a, b
 	}
 
-	aAndB = New()
+	aAndB = New[V]()
 
 	for v := range short.values {
 		if _, ok := long.values[v]; ok {
@@ -106,20 +106,20 @@ func (a *Bitset) And(b *Bitset) (aAndB *Bitset) {
 }
 
 // Or implements bitset.Logical
-func (a *Bitset) Or(b *Bitset) (aOrB *Bitset) {
+func (a *Bitset[V]) Or(b *Bitset[V]) (aOrB *Bitset[V]) {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
-	var short, long *Bitset
+	var short, long *Bitset[V]
 	if a.pop > b.pop {
 		short, long = b, a
 	} else {
 		short, long = a, b
 	}
 
-	aOrB = New()
+	aOrB = New[V]()
 
 	for v := range long.values {
 		aOrB.values[v] = none
@@ -137,12 +137,12 @@ func (a *Bitset) Or(b *Bitset) (aOrB *Bitset) {
 }
 
 // Cap implements bitset.Inspect
-func (s *Bitset) Cap() int {
+func (s *Bitset[V]) Cap() int {
 	return s.Len()
 }
 
 // Len implements bitset.Inspect
-func (s *Bitset) Len() int {
+func (s *Bitset[V]) Len() int {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
@@ -150,13 +150,15 @@ func (s *Bitset) Len() int {
 }
 
 // Pop implements bitset.Inspect
-func (s *Bitset) Pop() uint {
+func (s *Bitset[V]) Pop() uint {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
 	return s.pop
 }
 
-var _ bitset.Bitset = (*Bitset)(nil)
-var _ bitset.Logical[*Bitset] = (*Bitset)(nil)
-var _ bitset.Inspect = (*Bitset)(nil)
+var (
+	_ bitset.Bitset[uint]                 = (*Bitset[uint])(nil)
+	_ bitset.Logical[rune, *Bitset[rune]] = (*Bitset[rune])(nil)
+	_ bitset.Inspect[uint8]               = (*Bitset[uint8])(nil)
+)

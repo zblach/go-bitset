@@ -7,7 +7,7 @@ import (
 )
 
 // Bitset is a boolean-slice-backed bit array. It favors speed over size.
-type Bitset struct {
+type Bitset[V bitset.Value] struct {
 	lock *sync.RWMutex
 	bits []bool
 
@@ -15,14 +15,14 @@ type Bitset struct {
 }
 
 // New creates a new boolean bitset with an initial size of size.
-func New(size uint) *Bitset {
-	return &Bitset{
+func New[V bitset.Value](size uint) *Bitset[V] {
+	return &Bitset[V]{
 		lock: &sync.RWMutex{},
 		bits: make([]bool, size),
 	}
 }
 
-func (s *Bitset) Clear() {
+func (s *Bitset[V]) Clear() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -32,84 +32,84 @@ func (s *Bitset) Clear() {
 
 // Get returns whether or not a value is set in the underlying bool slice.
 // Getting a value outside of what's stored automatically returns false.
-func (b *Bitset) Get(index uint) bool {
-	b.lock.RLock()
-	defer b.lock.RUnlock()
+func (s *Bitset[V]) Get(index V) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
 
-	if index >= uint(len(b.bits)) {
+	if uint(index) >= uint(len(s.bits)) {
 		return false
 	}
-	return b.bits[index]
+	return s.bits[index]
 }
 
 // Set one or more values in the bitset.
 // The bitset will be expanded if necessary.
-func (b *Bitset) Set(indices ...uint) bitset.Bitset {
+func (s *Bitset[V]) Set(indices ...V) bitset.Bitset[V] {
 	if len(indices) == 0 {
-		return b
+		return s
 	}
 
-	maxIndex := uint(0)
+	maxIndex := V(0)
 	for _, index := range indices {
 		if index > maxIndex {
 			maxIndex = index
 		}
 	}
 
-	b.lock.Lock()
-	defer b.lock.Unlock()
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
-	b.growright(maxIndex)
+	s.growright(uint(maxIndex))
 
 	for _, index := range indices {
-		if !b.bits[index] {
-			b.bits[index] = true
-			b.pop += 1
+		if !s.bits[index] {
+			s.bits[index] = true
+			s.pop += 1
 		}
 	}
-	return b
+	return s
 }
 
 // Unset one or more values in the bitset.
 // Indices outside of range are ignored.
-func (b *Bitset) Unset(indices ...uint) bitset.Bitset {
+func (s *Bitset[V]) Unset(indices ...V) bitset.Bitset[V] {
 	if len(indices) == 0 {
-		return b
+		return s
 	}
 
-	b.lock.Lock()
-	defer b.lock.Unlock()
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
 	for _, index := range indices {
-		if index >= uint(len(b.bits)) {
+		if uint(index) >= uint(len(s.bits)) {
 			continue
 		}
-		if b.bits[index] {
-			b.bits[index] = false
-			b.pop -= 1
+		if s.bits[index] {
+			s.bits[index] = false
+			s.pop -= 1
 		}
 	}
-	return b
+	return s
 }
 
 // growright expands the underlying storage, if necessary
-func (b *Bitset) growright(newSize uint) {
+func (b *Bitset[V]) growright(newSize uint) {
 	ulen := uint(len(b.bits))
 	if newSize >= ulen {
 		b.bits = append(b.bits, make([]bool, (newSize-ulen+1))...)
 	}
 }
 
-var _ bitset.Bitset = (*Bitset)(nil)
+var _ bitset.Bitset[uint] = (*Bitset[uint])(nil)
 
-func (a *Bitset) And(b *Bitset) *Bitset {
+func (a *Bitset[V]) And(b *Bitset[V]) *Bitset[V] {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
 	var minSize uint
-	var short, long *Bitset
+	var short, long *Bitset[V]
 	if len(a.bits) > len(b.bits) {
 		minSize = uint(len(b.bits))
 		short, long = b, a
@@ -118,7 +118,7 @@ func (a *Bitset) And(b *Bitset) *Bitset {
 		short, long = a, b
 	}
 
-	result := &Bitset{
+	result := &Bitset[V]{
 		lock: &sync.RWMutex{},
 		bits: make([]bool, minSize),
 	}
@@ -133,14 +133,14 @@ func (a *Bitset) And(b *Bitset) *Bitset {
 	return result
 }
 
-func (a *Bitset) Or(b *Bitset) *Bitset {
+func (a *Bitset[V]) Or(b *Bitset[V]) *Bitset[V] {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
 	var maxSize uint
-	var short, long *Bitset
+	var short, long *Bitset[V]
 	if len(a.bits) > len(b.bits) {
 		maxSize = uint(len(a.bits))
 		short, long = b, a
@@ -149,7 +149,7 @@ func (a *Bitset) Or(b *Bitset) *Bitset {
 		short, long = a, b
 	}
 
-	result := &Bitset{
+	result := &Bitset[V]{
 		lock: &sync.RWMutex{},
 		bits: make([]bool, maxSize),
 		pop:  long.pop,
@@ -165,16 +165,16 @@ func (a *Bitset) Or(b *Bitset) *Bitset {
 	return result
 }
 
-var _ bitset.Logical[*Bitset] = (*Bitset)(nil)
+var _ bitset.Logical[uint, *Bitset[uint]] = (*Bitset[uint])(nil)
 
-func (b *Bitset) Len() int {
+func (b *Bitset[V]) Len() int {
 	return len(b.bits)
 }
-func (b *Bitset) Cap() int {
+func (b *Bitset[V]) Cap() int {
 	return cap(b.bits)
 }
-func (b *Bitset) Pop() uint {
+func (b *Bitset[V]) Pop() uint {
 	return b.pop
 }
 
-var _ bitset.Inspect = (*Bitset)(nil)
+var _ bitset.Inspect[uint] = (*Bitset[uint])(nil)

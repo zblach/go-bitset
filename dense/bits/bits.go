@@ -17,24 +17,24 @@ type Width interface {
 }
 
 type (
-	Uint   = Bitset[uint]
-	Uint8  = Bitset[uint8]
-	Uint16 = Bitset[uint16]
-	Uint32 = Bitset[uint32]
-	Uint64 = Bitset[uint64]
+	Uint   = Bitset[uint, uint]
+	Uint8  = Bitset[uint8, uint]
+	Uint16 = Bitset[uint16, uint]
+	Uint32 = Bitset[uint32, uint]
+	Uint64 = Bitset[uint64, uint]
 )
 
 // handy aliases for instantiation
 var (
-	NewUint   = New[uint]
-	NewUint8  = New[uint8]
-	NewUint16 = New[uint16]
-	NewUint32 = New[uint32]
-	NewUint64 = New[uint64]
+	NewUint   = New[uint, uint]
+	NewUint8  = New[uint8, uint]
+	NewUint16 = New[uint16, uint]
+	NewUint32 = New[uint32, uint]
+	NewUint64 = New[uint64, uint]
 )
 
 // Bitset is a threadsafe container for storing a set of bits.
-type Bitset[W Width] struct {
+type Bitset[W Width, V bitset.Value] struct {
 	lock *sync.RWMutex
 
 	bits []W
@@ -43,7 +43,7 @@ type Bitset[W Width] struct {
 
 // New instantiates a new bitset with an initial size of size.
 // This size parameter refers to the number of bitset elements, not the underlying storage.
-func New[W Width](size uint) *Bitset[W] {
+func New[W Width, V bitset.Value](size uint) *Bitset[W, V] {
 	var width uint
 	if size == 0 {
 		width = 0
@@ -54,13 +54,13 @@ func New[W Width](size uint) *Bitset[W] {
 			width += 1
 		}
 	}
-	return &Bitset[W]{
+	return &Bitset[W, V]{
 		lock: &sync.RWMutex{},
 		bits: make([]W, width),
 	}
 }
 
-func (s *Bitset[W]) Clear() {
+func (s *Bitset[W, V]) Clear() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -70,11 +70,11 @@ func (s *Bitset[W]) Clear() {
 
 // Get returns whether or not a value is set in the underlying bitset.
 // Getting a value outside of what's stored automatically returns false.
-func (s *Bitset[W]) Get(index uint) bool {
+func (s *Bitset[W, V]) Get(index V) bool {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	elem, bit := indexToTuple[W](index)
+	elem, bit := indexToTuple[W](uint(index))
 	if elem >= uint(len(s.bits)) {
 		return false
 	}
@@ -83,12 +83,12 @@ func (s *Bitset[W]) Get(index uint) bool {
 
 // Set one or more values in the bitset.
 // The bitset will be expanded if necessary.
-func (s *Bitset[W]) Set(indices ...uint) bitset.Bitset {
+func (s *Bitset[W, V]) Set(indices ...V) bitset.Bitset[V] {
 	if len(indices) == 0 {
 		return s
 	}
 
-	maxIndex := uint(0)
+	maxIndex := V(0)
 	for _, index := range indices {
 		if index > maxIndex {
 			maxIndex = index
@@ -98,10 +98,10 @@ func (s *Bitset[W]) Set(indices ...uint) bitset.Bitset {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.growright(maxIndex)
+	s.growright(uint(maxIndex))
 
 	for _, index := range indices {
-		elem, bit := indexToTuple[W](index)
+		elem, bit := indexToTuple[W](uint(index))
 		if (s.bits[elem] & bit) == 0 {
 			s.bits[elem] |= bit
 			s.pop += 1
@@ -113,7 +113,7 @@ func (s *Bitset[W]) Set(indices ...uint) bitset.Bitset {
 
 // Unset one or more values in the bitset.
 // Indices outside of range are ignored.
-func (s *Bitset[W]) Unset(indices ...uint) bitset.Bitset {
+func (s *Bitset[W, V]) Unset(indices ...V) bitset.Bitset[V] {
 	if len(indices) == 0 {
 		return s
 	}
@@ -122,7 +122,7 @@ func (s *Bitset[W]) Unset(indices ...uint) bitset.Bitset {
 	defer s.lock.Unlock()
 
 	for _, index := range indices {
-		elem, bit := indexToTuple[W](index)
+		elem, bit := indexToTuple[W](uint(index))
 		if elem >= uint(len(s.bits)) {
 			continue
 		}
@@ -143,8 +143,8 @@ func indexToTuple[W Width](index uint) (elem uint, bit W) {
 }
 
 // growright expands the underlying storage, if necessary
-func (s *Bitset[W]) growright(newSize uint) {
-	newLen, _ := indexToTuple[W](newSize)
+func (s *Bitset[W, V]) growright(newSize uint) {
+	newLen, _ := indexToTuple[W](uint(newSize))
 	ulen := uint(len(s.bits))
 	if newLen >= ulen {
 		chunk := make([]W, newLen-ulen+1)
@@ -154,35 +154,35 @@ func (s *Bitset[W]) growright(newSize uint) {
 
 // interface adherence validation
 var (
-	_ bitset.Bitset = (*Uint)(nil)
-	_ bitset.Bitset = (*Uint8)(nil)
-	_ bitset.Bitset = (*Uint16)(nil)
-	_ bitset.Bitset = (*Uint32)(nil)
-	_ bitset.Bitset = (*Uint64)(nil)
+	_ bitset.Bitset[uint] = (*Uint)(nil)
+	_ bitset.Bitset[uint] = (*Uint8)(nil)
+	_ bitset.Bitset[uint] = (*Uint16)(nil)
+	_ bitset.Bitset[uint] = (*Uint32)(nil)
+	_ bitset.Bitset[uint] = (*Uint64)(nil)
 
-	_ bitset.Logical[*Uint]   = (*Uint)(nil)
-	_ bitset.Logical[*Uint8]  = (*Uint8)(nil)
-	_ bitset.Logical[*Uint16] = (*Uint16)(nil)
-	_ bitset.Logical[*Uint32] = (*Uint32)(nil)
-	_ bitset.Logical[*Uint64] = (*Uint64)(nil)
+	_ bitset.Logical[uint, *Uint]   = (*Uint)(nil)
+	_ bitset.Logical[uint, *Uint8]  = (*Uint8)(nil)
+	_ bitset.Logical[uint, *Uint16] = (*Uint16)(nil)
+	_ bitset.Logical[uint, *Uint32] = (*Uint32)(nil)
+	_ bitset.Logical[uint, *Uint64] = (*Uint64)(nil)
 
-	_ bitset.Inspect = (*Uint)(nil)
-	_ bitset.Inspect = (*Uint8)(nil)
-	_ bitset.Inspect = (*Uint16)(nil)
-	_ bitset.Inspect = (*Uint32)(nil)
-	_ bitset.Inspect = (*Uint64)(nil)
+	_ bitset.Inspect[uint] = (*Uint)(nil)
+	_ bitset.Inspect[uint] = (*Uint8)(nil)
+	_ bitset.Inspect[uint] = (*Uint16)(nil)
+	_ bitset.Inspect[uint] = (*Uint32)(nil)
+	_ bitset.Inspect[uint] = (*Uint64)(nil)
 )
 
 // And computes and returns the intersection of two bitsets.
 // It does not modify either bitset.
-func (a *Bitset[W]) And(b *Bitset[W]) (aAndB *Bitset[W]) {
+func (a *Bitset[W, V]) And(b *Bitset[W, V]) (aAndB *Bitset[W, V]) {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
 	var minSize uint
-	var short, long *Bitset[W]
+	var short, long *Bitset[W, V]
 	if len(a.bits) > len(b.bits) {
 		minSize = uint(len(b.bits))
 		short, long = b, a
@@ -191,7 +191,7 @@ func (a *Bitset[W]) And(b *Bitset[W]) (aAndB *Bitset[W]) {
 		short, long = a, b
 	}
 
-	aAndB = &Bitset[W]{
+	aAndB = &Bitset[W, V]{
 		lock: &sync.RWMutex{},
 		bits: make([]W, minSize),
 	}
@@ -206,14 +206,14 @@ func (a *Bitset[W]) And(b *Bitset[W]) (aAndB *Bitset[W]) {
 
 // Or computes and returns the union of two bitsets.
 // It does not modify either bitset.
-func (a *Bitset[W]) Or(b *Bitset[W]) (aOrB *Bitset[W]) {
+func (a *Bitset[W, V]) Or(b *Bitset[W, V]) (aOrB *Bitset[W, V]) {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
 	var maxSize uint
-	var short, long *Bitset[W]
+	var short, long *Bitset[W, V]
 	if len(a.bits) > len(b.bits) {
 		maxSize = uint(len(a.bits))
 		short, long = b, a
@@ -222,7 +222,7 @@ func (a *Bitset[W]) Or(b *Bitset[W]) (aOrB *Bitset[W]) {
 		short, long = a, b
 	}
 
-	aOrB = &Bitset[W]{
+	aOrB = &Bitset[W, V]{
 		lock: &sync.RWMutex{},
 		bits: make([]W, maxSize),
 	}
@@ -239,16 +239,16 @@ func (a *Bitset[W]) Or(b *Bitset[W]) (aOrB *Bitset[W]) {
 // Inspection functions
 
 // Len is the used number of bits in the underlying data store (rounded up to word size).
-func (s *Bitset[W]) Len() int {
+func (s *Bitset[V, W]) Len() int {
 	return int(len(s.bits)*int(unsafe.Sizeof(W(0)))) * 8
 }
 
 // Cap is the available number of bits in the underlying data store (rounded up to word size).
-func (s *Bitset[W]) Cap() int {
+func (s *Bitset[V, W]) Cap() int {
 	return int(cap(s.bits)*int(unsafe.Sizeof(W(0)))) * 8
 }
 
 // Pop is the number of bits set in the underlying data store.
-func (s *Bitset[W]) Pop() uint {
+func (s *Bitset[V, W]) Pop() uint {
 	return s.pop
 }
