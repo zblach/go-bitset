@@ -1,26 +1,23 @@
 package bools
 
 import (
-	"sync"
-
 	"github.com/zblach/go-bitset"
+	"github.com/zblach/go-bitset/iterable"
 )
 
-func (s *Bitset[V]) Iterate() bitset.Iter[V] {
+func (s *Bitset[V]) Iterate() (iterable.Iter[V], uint) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
+	len := uint(len(s.bits))
+
 	it := &Iterator[V]{
-		Bitset: Bitset[V]{
-			lock: &sync.RWMutex{},
-			pop:  s.pop,
-			bits: make([]bool, len(s.bits)),
-		},
-		index: 0,
+		Bitset: *New[V](len),
 	}
+	it.pop = s.pop
 	copy(it.bits, s.bits)
 
-	return it
+	return it, len
 }
 
 type Iterator[V bitset.Value] struct {
@@ -41,3 +38,8 @@ func (it *Iterator[V]) Next() (V, bool) {
 	}
 	return 0, false
 }
+
+var (
+	_ iterable.Iter[uint]     = (*Iterator[uint])(nil)
+	_ iterable.Iterable[rune] = (*Bitset[rune])(nil)
+)

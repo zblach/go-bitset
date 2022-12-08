@@ -4,13 +4,16 @@ import (
 	"sync"
 
 	"github.com/zblach/go-bitset"
-	"golang.org/x/exp/constraints"
+	"github.com/zblach/go-bitset/mixin/logical"
+	"github.com/zblach/go-bitset/sparse/range/sparse_set"
 )
 
 type Bitset[V bitset.Value] struct {
+	logical.IterableMixin[V]
+
 	lock *sync.RWMutex
 
-	sets sparseSet[V]
+	sets sparse_set.Set[V]
 	pop  uint
 }
 
@@ -23,7 +26,8 @@ func (a *Bitset[V]) And(b *Bitset[V]) (aAndB *Bitset[V]) {
 
 	aAndB = New[V]()
 
-	it_a, it_b := a.Iterate(), b.Iterate()
+	it_a, _ := a.Iterate()
+	it_b, _ := b.Iterate()
 
 	val_a, next_a := it_a.Next()
 	val_b, next_b := it_b.Next()
@@ -60,12 +64,12 @@ func (a *Bitset[V]) Or(b *Bitset[V]) (aOrB *Bitset[V]) {
 
 	aOrB = &Bitset[V]{
 		lock: &sync.RWMutex{},
-		sets: make(sparseSet[V], len(long.sets)),
+		sets: make(sparse_set.Set[V], len(long.sets)),
 		pop:  long.pop,
 	}
 	copy(aOrB.sets, long.sets)
 
-	it_s := short.Iterate()
+	it_s, _ := short.Iterate()
 	for v, ok := it_s.Next(); ok; v, ok = it_s.Next() {
 		aOrB.Set(v)
 	}
@@ -91,7 +95,7 @@ func (s *Bitset[V]) Pop() uint {
 func New[V bitset.Value]() *Bitset[V] {
 	return &Bitset[V]{
 		lock: &sync.RWMutex{},
-		sets: sparseSet[V]{},
+		sets: sparse_set.Set[V]{},
 	}
 }
 
@@ -99,7 +103,18 @@ func (s *Bitset[V]) Clear() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.sets = make(sparseSet[V], 0)
+	s.sets = make(sparse_set.Set[V], 0)
+}
+
+func (s *Bitset[V]) Copy() *Bitset[V] {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	clone := New[V]()
+	clone.pop = s.pop
+	copy(clone.sets, s.sets)
+
+	return clone
 }
 
 // Get implements bitset.Bitset
@@ -108,7 +123,7 @@ func (s *Bitset[V]) Get(index V) bool {
 	defer s.lock.RUnlock()
 
 	for _, st := range s.sets {
-		if st.contains(index) {
+		if st.Contains(index) {
 			return true
 		}
 	}
@@ -117,123 +132,31 @@ func (s *Bitset[V]) Get(index V) bool {
 }
 
 // Set implements bitset.Bitset
-func (s *Bitset[V]) Set(indices ...V) bitset.Bitset[V] {
+func (s *Bitset[V]) Set(indices ...V) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	for _, index := range indices {
-		if s.sets.insert(index) {
+		if s.sets.Insert(index) {
 			s.pop++
 		}
 	}
-	return s
 }
 
 // Unset implements bitset.Bitset
-func (s *Bitset[V]) Unset(indices ...V) bitset.Bitset[V] {
+func (s *Bitset[V]) Unset(indices ...V) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	for _, index := range indices {
-		if s.sets.remove(index) {
+		if s.sets.Remove(index) {
 			s.pop--
 		}
 	}
-	return s
 }
 
 var (
-	_ bitset.Bitset[byte]                 = (*Bitset[byte])(nil)
-	_ bitset.Logical[rune, *Bitset[rune]] = (*Bitset[rune])(nil) // TBD
-	_ bitset.Inspect[uint]                = (*Bitset[uint])(nil)
+	_ bitset.Bitset[byte]                = (*Bitset[byte])(nil)
+	_ bitset.Binary[rune, *Bitset[rune]] = (*Bitset[rune])(nil)
+	_ bitset.Inspect[uint]               = (*Bitset[uint])(nil)
 )
-
-type sparseRange[V constraints.Integer] struct {
-	start, end V // inclusive
-}
-
-func (s *sparseRange[V]) contains(val V) bool {
-	return val >= s.start && val <= s.end
-}
-
-type sparseSet[V constraints.Integer] []sparseRange[V]
-
-func (s *sparseSet[V]) insert(val V) bool {
-	for i, r := range *s {
-		switch {
-		case r.contains(val):
-			// val exists already
-			return false
-		case r.start-1 == val:
-			// we're not contained by the previous set, but this one can be extended forward
-			(*s)[i].start -= 1
-			return true
-
-		case r.start > val:
-			// doesn't exist in the set up to here. insert it at this index.
-			*s = append(*s, sparseRange[V]{})
-			for j := len(*s) - 1; j > i; j-- {
-				(*s)[j] = (*s)[j-1]
-			}
-			(*s)[i] = sparseRange[V]{val, val}
-			return true
-
-		case r.end+1 == val:
-			// extend this element, and check if it collides into the next element (if it exists)
-			(*s)[i].end += 1
-			if i+1 == len(*s) {
-				return true
-			}
-			if (*s)[i+1].start == val+1 {
-				(*s)[i].end = (*s)[i+1].end
-				(*s) = append((*s)[:i+1], (*s)[i+2:]...)
-			}
-			return true
-		}
-	}
-	// it's none of any of the above cases. add it to the end of the list
-	*s = append(*s, sparseRange[V]{val, val})
-	return true
-}
-
-func (s *sparseSet[V]) remove(val V) bool {
-	for i, r := range *s {
-		switch {
-		case r.start > val:
-			return false
-			// element not present to be removed. no-op.
-
-		case r.start == val:
-			// r can have start modified
-			(*s)[i].start += 1
-			if (*s)[i].start > r.end {
-				// remove invalid element.
-				if i == 0 {
-					(*s) = (*s)[1:]
-				} else {
-					for j := i; j < len(*s)-1; j++ {
-						(*s)[j] = (*s)[j+1]
-					}
-					(*s) = (*s)[:len(*s)-1]
-				}
-			}
-
-		case r.end == val:
-			// r can have end modified
-			(*s)[i].end -= 1
-			// if the element was invalid here, then it was one element long, and would have been caught by the previous case.
-
-		case r.contains(val):
-			// split r into two parts, excluding val
-			(*s) = append(*s, sparseRange[V]{})
-			for j := len(*s) - 1; j > i; j-- {
-				(*s)[j] = (*s)[j-1]
-			}
-			(*s)[i].end = val - 1
-
-			(*s)[i+1].start = val + 1
-			(*s)[i+1].end = r.end
-		}
-	}
-	return true
-}

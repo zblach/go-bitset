@@ -53,8 +53,8 @@ func Test_Uint8_Logical(t *testing.T) {
 	a := NewUint8(0)
 	b := NewUint8(0)
 
-	a.Set(1, 3, 5, 6, 7).Set()
-	b.Set(0, 2, 4, 6, 7).Unset()
+	a.Set(1, 3, 5, 6, 7)
+	b.Set(0, 2, 4, 6, 7)
 
 	aAndB := a.And(b)
 	aOrB := a.Or(b)
@@ -85,7 +85,8 @@ func Test_Uint8_Logical(t *testing.T) {
 
 func Test_Uint64_Inspect(t *testing.T) {
 	a := NewUint64(2)
-	a.Set(1, 2, 3, 1).Unset(2)
+	a.Set(1, 2, 3, 1)
+	a.Unset(2)
 
 	assert.Equal(t, 64, a.Len())
 	assert.GreaterOrEqual(t, a.Cap(), 64)

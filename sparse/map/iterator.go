@@ -2,37 +2,44 @@ package mapset
 
 import (
 	"sort"
+	"sync"
 
 	"github.com/zblach/go-bitset"
+	"github.com/zblach/go-bitset/iterable"
 )
 
-func (s *Bitset[V]) Iterate() bitset.Iter[V] {
+func (s *Bitset[V]) Iterate() (iterable.Iter[V], uint) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
 	it := &Iterator[V]{
-		keys: make([]V, s.pop),
+		lock: &sync.RWMutex{},
+		keys: make([]V, 0, s.pop),
 	}
 
-	i := 0
 	for k := range s.values {
-		it.keys[i] = k
-		i++
+		it.keys = append(it.keys, k)
 	}
 
+	// All other iterators are in order, but map access is random.
+	// For consistency's sake, we sort the keys before we iterate.
 	sort.Slice(it.keys, func(i, j int) bool {
 		return it.keys[i] < it.keys[j]
 	})
 
-	return it
+	return it, s.pop
 }
 
 type Iterator[V bitset.Value] struct {
+	lock  *sync.RWMutex
 	keys  []V
 	index uint
 }
 
 func (it *Iterator[V]) Next() (V, bool) {
+	it.lock.Lock()
+	defer it.lock.Unlock()
+
 	if it.index >= uint(len(it.keys)) {
 		return 0, false
 	}
@@ -41,4 +48,7 @@ func (it *Iterator[V]) Next() (V, bool) {
 	return val, true
 }
 
-var _ bitset.Iter[uint16] = (*Iterator[uint16])(nil)
+var (
+	_ iterable.Iter[uint]     = (*Iterator[uint])(nil)
+	_ iterable.Iterable[rune] = (*Bitset[rune])(nil)
+)

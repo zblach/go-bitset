@@ -5,29 +5,32 @@ import (
 	"unsafe"
 
 	"github.com/zblach/go-bitset"
+	"github.com/zblach/go-bitset/iterable"
 
 	mb "math/bits"
 )
 
-func (s *Bitset[W, V]) Iterate() bitset.Iter[V] {
+func (s *Bitset[W, V]) Iterate() (iterable.Iter[V], uint) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
 	it := &Iterator[W, V]{
-		lock: &sync.RWMutex{},
-		copy: make([]W, len(s.bits)),
+		// explicit construction to avoid window recalculation
+		Bitset: Bitset[W, V]{
+			lock: &sync.RWMutex{},
+			bits: make([]W, len(s.bits)),
+			pop:  s.pop,
+		},
 	}
-	copy(it.copy, s.bits)
+	copy(it.bits, s.bits)
 
-	return it
+	return it, uint(len(s.bits))
 }
 
 type Iterator[W Width, V bitset.Value] struct {
-	lock *sync.RWMutex
+	Bitset[W, V]
 
-	copy  []W
-	index uint
-
+	index    uint
 	wordBits []V
 }
 
@@ -39,13 +42,13 @@ func (it *Iterator[W, V]) Next() (V, bool) {
 		var window W
 
 		// find next non-zero window
-		for ; it.index < uint(len(it.copy)); it.index++ {
-			window = it.copy[it.index]
+		for ; it.index < uint(len(it.bits)); it.index++ {
+			window = it.bits[it.index]
 			if window != 0 {
 				break
 			}
 		}
-		if it.index >= uint(len(it.copy)) {
+		if it.index >= uint(len(it.bits)) {
 			return 0, false
 		}
 
@@ -68,3 +71,8 @@ func (it *Iterator[W, V]) Next() (V, bool) {
 
 	return val, true
 }
+
+var (
+	_ iterable.Iter[uint]     = (*Iterator[uint, uint])(nil)
+	_ iterable.Iterable[rune] = (*Bitset[uint, rune])(nil)
+)

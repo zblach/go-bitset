@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/zblach/go-bitset"
+	"github.com/zblach/go-bitset/mixin/logical"
 )
 
 type noneT struct{}
@@ -11,6 +12,8 @@ type noneT struct{}
 var none = noneT{}
 
 type Bitset[V bitset.Value] struct {
+	logical.IterableMixin[V]
+
 	lock *sync.RWMutex
 
 	values map[V]noneT
@@ -32,6 +35,19 @@ func (s *Bitset[V]) Clear() {
 	s.pop = 0
 }
 
+func (s *Bitset[V]) Copy() *Bitset[V] {
+	s.lock.Lock()
+	defer s.lock.RUnlock()
+
+	clone := New[V]()
+	clone.pop = s.pop
+	for k, v := range s.values {
+		clone.values[k] = v
+	}
+
+	return clone
+}
+
 // Get implements bitset.Bitset
 func (s *Bitset[V]) Get(index V) bool {
 	s.lock.RLock()
@@ -42,9 +58,9 @@ func (s *Bitset[V]) Get(index V) bool {
 }
 
 // Set implements bitset.Bitset
-func (s *Bitset[V]) Set(indices ...V) bitset.Bitset[V] {
+func (s *Bitset[V]) Set(indices ...V) {
 	if len(indices) == 0 {
-		return s
+		return
 	}
 
 	s.lock.Lock()
@@ -56,14 +72,12 @@ func (s *Bitset[V]) Set(indices ...V) bitset.Bitset[V] {
 			s.pop += 1
 		}
 	}
-
-	return s
 }
 
 // Unset implements bitset.Bitset
-func (s *Bitset[V]) Unset(indices ...V) bitset.Bitset[V] {
+func (s *Bitset[V]) Unset(indices ...V) {
 	if len(indices) == 0 {
-		return s
+		return
 	}
 
 	s.lock.Lock()
@@ -75,8 +89,6 @@ func (s *Bitset[V]) Unset(indices ...V) bitset.Bitset[V] {
 			s.pop -= 1
 		}
 	}
-
-	return s
 }
 
 // And implements bitset.Logical
@@ -119,12 +131,7 @@ func (a *Bitset[V]) Or(b *Bitset[V]) (aOrB *Bitset[V]) {
 		short, long = a, b
 	}
 
-	aOrB = New[V]()
-
-	for v := range long.values {
-		aOrB.values[v] = none
-	}
-	aOrB.pop = long.pop
+	aOrB = long.Copy()
 
 	for v := range short.values {
 		if _, ok := aOrB.values[v]; !ok {
@@ -157,8 +164,9 @@ func (s *Bitset[V]) Pop() uint {
 	return s.pop
 }
 
+// Interface adherence. Randomly-selected V types
 var (
-	_ bitset.Bitset[uint]                 = (*Bitset[uint])(nil)
-	_ bitset.Logical[rune, *Bitset[rune]] = (*Bitset[rune])(nil)
-	_ bitset.Inspect[uint8]               = (*Bitset[uint8])(nil)
+	_ bitset.Bitset[uint]                = (*Bitset[uint])(nil)
+	_ bitset.Binary[rune, *Bitset[rune]] = (*Bitset[rune])(nil)
+	_ bitset.Inspect[uint8]              = (*Bitset[uint8])(nil)
 )

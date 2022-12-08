@@ -7,6 +7,7 @@ import (
 	mb "math/bits"
 
 	"github.com/zblach/go-bitset"
+	"github.com/zblach/go-bitset/mixin/logical"
 )
 
 // Width is the underlying word-size for storing bit fields.
@@ -16,6 +17,7 @@ type Width interface {
 		uintptr | ~uint // machine-optimized sizes
 }
 
+// Basic internal type aliases.
 type (
 	Uint   = Bitset[uint, uint]
 	Uint8  = Bitset[uint8, uint]
@@ -23,6 +25,8 @@ type (
 	Uint32 = Bitset[uint32, uint]
 	Uint64 = Bitset[uint64, uint]
 )
+
+// NOTE: can't currently use a generic parameter as a type alias.
 
 // handy aliases for instantiation
 var (
@@ -35,6 +39,8 @@ var (
 
 // Bitset is a threadsafe container for storing a set of bits.
 type Bitset[W Width, V bitset.Value] struct {
+	logical.IterableMixin[V]
+
 	lock *sync.RWMutex
 
 	bits []W
@@ -60,12 +66,28 @@ func New[W Width, V bitset.Value](size uint) *Bitset[W, V] {
 	}
 }
 
+// Clear unsets all elements in the bitset, and sets the internal size to zero.
 func (s *Bitset[W, V]) Clear() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	s.bits = make([]W, 0)
 	s.pop = 0
+}
+
+// Copy returns a deep copy of the bitset.
+func (s *Bitset[W, V]) Copy() *Bitset[W, V] {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	clone := &Bitset[W, V]{
+		lock: &sync.RWMutex{},
+		pop:  s.pop,
+		bits: make([]W, len(s.bits)),
+	}
+	copy(clone.bits, s.bits)
+
+	return clone
 }
 
 // Get returns whether or not a value is set in the underlying bitset.
@@ -83,15 +105,15 @@ func (s *Bitset[W, V]) Get(index V) bool {
 
 // Set one or more values in the bitset.
 // The bitset will be expanded if necessary.
-func (s *Bitset[W, V]) Set(indices ...V) bitset.Bitset[V] {
+func (s *Bitset[W, V]) Set(indices ...V) {
 	if len(indices) == 0 {
-		return s
+		return
 	}
 
-	maxIndex := V(0)
-	for _, index := range indices {
-		if index > maxIndex {
-			maxIndex = index
+	maxIndex := indices[0]
+	for i := 1; i < len(indices); i++ {
+		if indices[i] > maxIndex {
+			maxIndex = indices[i]
 		}
 	}
 
@@ -107,15 +129,13 @@ func (s *Bitset[W, V]) Set(indices ...V) bitset.Bitset[V] {
 			s.pop += 1
 		}
 	}
-
-	return s
 }
 
 // Unset one or more values in the bitset.
 // Indices outside of range are ignored.
-func (s *Bitset[W, V]) Unset(indices ...V) bitset.Bitset[V] {
+func (s *Bitset[W, V]) Unset(indices ...V) {
 	if len(indices) == 0 {
-		return s
+		return
 	}
 
 	s.lock.Lock()
@@ -132,19 +152,18 @@ func (s *Bitset[W, V]) Unset(indices ...V) bitset.Bitset[V] {
 			s.pop -= 1
 		}
 	}
-	return s
 }
 
-// indexToTuple is a utility function to compute the element and bit, based on index.
+// indexToTuple is a utility function to compute the memory element and bitmask, based on index.
 func indexToTuple[W Width](index uint) (elem uint, bit W) {
 	wbits := uint(unsafe.Sizeof(W(0)) << 3)
 
-	return index / wbits, 1 << (index & (wbits - 1))
+	return index / wbits, 1 << (index & (wbits - 1)) // equiv to index % wbits
 }
 
 // growright expands the underlying storage, if necessary
 func (s *Bitset[W, V]) growright(newSize uint) {
-	newLen, _ := indexToTuple[W](uint(newSize))
+	newLen, _ := indexToTuple[W](newSize)
 	ulen := uint(len(s.bits))
 	if newLen >= ulen {
 		chunk := make([]W, newLen-ulen+1)
@@ -160,11 +179,11 @@ var (
 	_ bitset.Bitset[uint] = (*Uint32)(nil)
 	_ bitset.Bitset[uint] = (*Uint64)(nil)
 
-	_ bitset.Logical[uint, *Uint]   = (*Uint)(nil)
-	_ bitset.Logical[uint, *Uint8]  = (*Uint8)(nil)
-	_ bitset.Logical[uint, *Uint16] = (*Uint16)(nil)
-	_ bitset.Logical[uint, *Uint32] = (*Uint32)(nil)
-	_ bitset.Logical[uint, *Uint64] = (*Uint64)(nil)
+	_ bitset.Binary[uint, *Uint]   = (*Uint)(nil)
+	_ bitset.Binary[uint, *Uint8]  = (*Uint8)(nil)
+	_ bitset.Binary[uint, *Uint16] = (*Uint16)(nil)
+	_ bitset.Binary[uint, *Uint32] = (*Uint32)(nil)
+	_ bitset.Binary[uint, *Uint64] = (*Uint64)(nil)
 
 	_ bitset.Inspect[uint] = (*Uint)(nil)
 	_ bitset.Inspect[uint] = (*Uint8)(nil)
@@ -181,19 +200,16 @@ func (a *Bitset[W, V]) And(b *Bitset[W, V]) (aAndB *Bitset[W, V]) {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
-	var minSize uint
 	var short, long *Bitset[W, V]
 	if len(a.bits) > len(b.bits) {
-		minSize = uint(len(b.bits))
 		short, long = b, a
 	} else {
-		minSize = uint(len(a.bits))
 		short, long = a, b
 	}
 
 	aAndB = &Bitset[W, V]{
 		lock: &sync.RWMutex{},
-		bits: make([]W, minSize),
+		bits: make([]W, len(short.bits)),
 	}
 
 	for i, bits := range short.bits {
@@ -212,24 +228,23 @@ func (a *Bitset[W, V]) Or(b *Bitset[W, V]) (aOrB *Bitset[W, V]) {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
-	var maxSize uint
 	var short, long *Bitset[W, V]
 	if len(a.bits) > len(b.bits) {
-		maxSize = uint(len(a.bits))
 		short, long = b, a
 	} else {
-		maxSize = uint(len(b.bits))
 		short, long = a, b
 	}
 
 	aOrB = &Bitset[W, V]{
 		lock: &sync.RWMutex{},
-		bits: make([]W, maxSize),
+		bits: make([]W, len(long.bits)),
 	}
-	copy(aOrB.bits, long.bits)
-
-	for i, bits := range short.bits {
-		aOrB.bits[i] |= bits
+	for i, sbits := range short.bits {
+		aOrB.bits[i] = long.bits[i] | sbits
+		aOrB.pop += uint(mb.OnesCount64(uint64(aOrB.bits[i])))
+	}
+	for i := len(short.bits); i < len(long.bits); i++ {
+		aOrB.bits[i] = long.bits[i]
 		aOrB.pop += uint(mb.OnesCount64(uint64(aOrB.bits[i])))
 	}
 
@@ -240,12 +255,12 @@ func (a *Bitset[W, V]) Or(b *Bitset[W, V]) (aOrB *Bitset[W, V]) {
 
 // Len is the used number of bits in the underlying data store (rounded up to word size).
 func (s *Bitset[V, W]) Len() int {
-	return int(len(s.bits)*int(unsafe.Sizeof(W(0)))) * 8
+	return len(s.bits) * int(unsafe.Sizeof(W(0))) * 8
 }
 
 // Cap is the available number of bits in the underlying data store (rounded up to word size).
 func (s *Bitset[V, W]) Cap() int {
-	return int(cap(s.bits)*int(unsafe.Sizeof(W(0)))) * 8
+	return cap(s.bits) * int(unsafe.Sizeof(W(0))) * 8
 }
 
 // Pop is the number of bits set in the underlying data store.

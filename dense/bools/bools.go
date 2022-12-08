@@ -4,10 +4,13 @@ import (
 	"sync"
 
 	"github.com/zblach/go-bitset"
+	"github.com/zblach/go-bitset/mixin/logical"
 )
 
 // Bitset is a boolean-slice-backed bit array. It favors speed over size.
 type Bitset[V bitset.Value] struct {
+	logical.IterableMixin[V]
+
 	lock *sync.RWMutex
 	bits []bool
 
@@ -30,6 +33,16 @@ func (s *Bitset[V]) Clear() {
 	s.pop = 0
 }
 
+func (s *Bitset[V]) Copy() *Bitset[V] {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	clone := New[V](s.pop)
+	copy(clone.bits, s.bits)
+
+	return clone
+}
+
 // Get returns whether or not a value is set in the underlying bool slice.
 // Getting a value outside of what's stored automatically returns false.
 func (s *Bitset[V]) Get(index V) bool {
@@ -44,22 +57,22 @@ func (s *Bitset[V]) Get(index V) bool {
 
 // Set one or more values in the bitset.
 // The bitset will be expanded if necessary.
-func (s *Bitset[V]) Set(indices ...V) bitset.Bitset[V] {
+func (s *Bitset[V]) Set(indices ...V) {
 	if len(indices) == 0 {
-		return s
+		return
 	}
 
-	maxIndex := V(0)
-	for _, index := range indices {
-		if index > maxIndex {
-			maxIndex = index
+	maxIndex := indices[0]
+	for i := 1; i < len(indices); i++ {
+		if indices[i] > maxIndex {
+			maxIndex = indices[i]
 		}
 	}
 
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.growright(uint(maxIndex))
+	s.growright(uint64(maxIndex))
 
 	for _, index := range indices {
 		if !s.bits[index] {
@@ -67,14 +80,13 @@ func (s *Bitset[V]) Set(indices ...V) bitset.Bitset[V] {
 			s.pop += 1
 		}
 	}
-	return s
 }
 
 // Unset one or more values in the bitset.
 // Indices outside of range are ignored.
-func (s *Bitset[V]) Unset(indices ...V) bitset.Bitset[V] {
+func (s *Bitset[V]) Unset(indices ...V) {
 	if len(indices) == 0 {
-		return s
+		return
 	}
 
 	s.lock.Lock()
@@ -89,12 +101,11 @@ func (s *Bitset[V]) Unset(indices ...V) bitset.Bitset[V] {
 			s.pop -= 1
 		}
 	}
-	return s
 }
 
 // growright expands the underlying storage, if necessary
-func (b *Bitset[V]) growright(newSize uint) {
-	ulen := uint(len(b.bits))
+func (b *Bitset[V]) growright(newSize uint64) {
+	ulen := uint64(len(b.bits))
 	if newSize >= ulen {
 		b.bits = append(b.bits, make([]bool, (newSize-ulen+1))...)
 	}
@@ -102,7 +113,7 @@ func (b *Bitset[V]) growright(newSize uint) {
 
 var _ bitset.Bitset[uint] = (*Bitset[uint])(nil)
 
-func (a *Bitset[V]) And(b *Bitset[V]) *Bitset[V] {
+func (a *Bitset[V]) And(b *Bitset[V]) (aAndB *Bitset[V]) {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 	b.lock.RLock()
@@ -118,40 +129,36 @@ func (a *Bitset[V]) And(b *Bitset[V]) *Bitset[V] {
 		short, long = a, b
 	}
 
-	result := &Bitset[V]{
-		lock: &sync.RWMutex{},
-		bits: make([]bool, minSize),
-	}
+	aAndB = New[V](minSize)
 
 	for i, v := range short.bits {
 		if v && long.bits[i] {
-			result.bits[i] = true
-			result.pop += 1
+			aAndB.bits[i] = true
+			aAndB.pop += 1
 		}
 	}
 
-	return result
+	return
 }
 
-func (a *Bitset[V]) Or(b *Bitset[V]) *Bitset[V] {
+func (a *Bitset[V]) Or(b *Bitset[V]) (aOrB *Bitset[V]) {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
-	var maxSize uint
 	var short, long *Bitset[V]
 	if len(a.bits) > len(b.bits) {
-		maxSize = uint(len(a.bits))
 		short, long = b, a
 	} else {
-		maxSize = uint(len(b.bits))
 		short, long = a, b
 	}
 
+	aOrB = New[V](long.pop)
+
 	result := &Bitset[V]{
 		lock: &sync.RWMutex{},
-		bits: make([]bool, maxSize),
+		bits: make([]bool, len(long.bits)),
 		pop:  long.pop,
 	}
 	copy(result.bits, long.bits)
@@ -165,7 +172,7 @@ func (a *Bitset[V]) Or(b *Bitset[V]) *Bitset[V] {
 	return result
 }
 
-var _ bitset.Logical[uint, *Bitset[uint]] = (*Bitset[uint])(nil)
+var _ bitset.Binary[uint, *Bitset[uint]] = (*Bitset[uint])(nil)
 
 func (b *Bitset[V]) Len() int {
 	return len(b.bits)

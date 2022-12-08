@@ -49,8 +49,8 @@ func Test_Bools_Logical(t *testing.T) {
 	a := New[uint](0)
 	b := New[uint](0)
 
-	a.Set(1, 3, 5, 6, 7).Set()
-	b.Set(0, 2, 4, 6, 7).Unset()
+	a.Set(1, 3, 5, 6, 7)
+	b.Set(0, 2, 4, 6, 7)
 
 	aAndB := a.And(b)
 	aOrB := a.Or(b)
@@ -81,7 +81,8 @@ func Test_Bools_Logical(t *testing.T) {
 
 func Test_Bools_Inspect(t *testing.T) {
 	a := New[uint](2)
-	a.Set(1, 2, 3, 1).Unset(2)
+	a.Set(1, 2, 3, 1)
+	a.Unset(2)
 
 	assert.Equal(t, 4, a.Len())
 	assert.GreaterOrEqual(t, a.Cap(), 4)
